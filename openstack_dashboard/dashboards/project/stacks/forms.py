@@ -30,8 +30,7 @@ from openstack_dashboard.dashboards.project.images \
 from openstack_dashboard.dashboards.project.instances \
     import utils as instance_utils
 
-from .heat_helpers import get_templates, get_environments, \
-    get_template_data, get_environment_data
+import heat_helpers as hh
 
 LOG = logging.getLogger(__name__)
 
@@ -70,7 +69,7 @@ class TemplateForm(forms.SelfHandlingForm):
                                         choices=base_choices + url_choice,
                                         widget=forms.Select(attrs=attributes))
 
-    template_choices = get_templates()
+    template_choices = hh.get_templates()
     attributes = create_upload_form_attributes(
         'template',
         'storage',
@@ -144,13 +143,14 @@ class TemplateForm(forms.SelfHandlingForm):
         self.next_view = kwargs.pop('next_view')
         super(TemplateForm, self).__init__(*args, **kwargs)
 
-        for template in get_templates():
+        for template in hh.get_templates():
+            label = 'Environment File %s' % template[1]
             attributes = create_upload_form_attributes(
                 'local',
-                '%s' % template[0],
-                _('Environment File %s' % template[1]))
-            field = forms.ChoiceField(label=_('Environment File %s' % template[1]),
-                                      choices=get_environments(template[0]),
+                str(template[0]),
+                label)
+            field = forms.ChoiceField(label=label,
+                                      choices=hh.get_environments(template[0]),
                                       widget=forms.Select(attrs=attributes),
                                       required=False)
             self.fields["env_data_%s" % template[0]] = field
@@ -159,11 +159,12 @@ class TemplateForm(forms.SelfHandlingForm):
         cleaned = super(TemplateForm, self).clean()
         if not cleaned['template_storage_source']:
             files = self.request.FILES
-            self.clean_uploaded_files('template', _('template'), cleaned, files)
+            self.clean_uploaded_files('template', _('template'), cleaned,
+                                      files)
             self.clean_uploaded_files('environment', _('environment'), cleaned,
                                       files)
         else:
-            cleaned["template_data"] = get_template_data(
+            cleaned["template_data"] = hh.get_template_data(
                 cleaned["template_storage_source"])
 
         # Validate the template and get back the params.
@@ -244,7 +245,7 @@ class TemplateForm(forms.SelfHandlingForm):
         if data["template_storage_source"]:
             tmpl = data["template_storage_source"]
             kwargs["environment_data"] = \
-                get_environment_data(tmpl, data["env_data_" + tmpl])
+                hh.get_environment_data(tmpl, data["env_data_" + tmpl])
         if data.get('stack_id'):
             kwargs['stack_id'] = data['stack_id']
         return kwargs
