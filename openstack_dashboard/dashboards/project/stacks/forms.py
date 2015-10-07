@@ -153,11 +153,10 @@ class TemplateForm(forms.SelfHandlingForm):
                                       choices=get_environments(template[0]),
                                       widget=forms.Select(attrs=attributes),
                                       required=False)
-            self.fields["environment_data____%s" % template[0]] = field
+            self.fields["env_data_%s" % template[0]] = field
 
     def clean(self):
         cleaned = super(TemplateForm, self).clean()
-        LOG.info(str(cleaned['template_storage_source']))
         if not cleaned['template_storage_source']:
             files = self.request.FILES
             self.clean_uploaded_files('template', _('template'), cleaned, files)
@@ -166,7 +165,6 @@ class TemplateForm(forms.SelfHandlingForm):
         else:
             cleaned["template_data"] = get_template_data(
                 cleaned["template_storage_source"])
-            LOG.info("cleaned['template_data'] = " +str(cleaned["template_data"]))
 
         # Validate the template and get back the params.
         kwargs = {}
@@ -182,7 +180,6 @@ class TemplateForm(forms.SelfHandlingForm):
             validated = api.heat.template_validate(self.request, **kwargs)
             cleaned['template_validate'] = validated
         except Exception as e:
-            LOG.info("BOOOOOO " + six.text_type(e))
             raise forms.ValidationError(six.text_type(e))
 
         return cleaned
@@ -244,9 +241,10 @@ class TemplateForm(forms.SelfHandlingForm):
                   'environment_data': data['environment_data'],
                   'template_data': data['template_data'],
                   'template_url': data['template_url']}
-        kwargs["environment_data"] = get_environment_data(data["template_storage_source"],
-            data["environment_data____%s" % data["template_storage_source"]])  ###???
-        LOG.info("Create_kwargs: " + str(kwargs["environment_data"]))
+        if data["template_storage_source"]:
+            tmpl = data["template_storage_source"]
+            kwargs["environment_data"] = \
+                get_environment_data(tmpl, data["env_data_" + tmpl])
         if data.get('stack_id'):
             kwargs['stack_id'] = data['stack_id']
         return kwargs
