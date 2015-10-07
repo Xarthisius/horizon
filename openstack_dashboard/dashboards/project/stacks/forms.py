@@ -30,6 +30,8 @@ from openstack_dashboard.dashboards.project.images \
 from openstack_dashboard.dashboards.project.instances \
     import utils as instance_utils
 
+from .heat_helpers import get_templates, get_environments, \
+    get_template_data, get_environment_data
 
 LOG = logging.getLogger(__name__)
 
@@ -60,12 +62,26 @@ class TemplateForm(forms.SelfHandlingForm):
     # TODO(jomara) - update URL choice for template & environment files
     # w/ client side download when applicable
     base_choices = [('file', _('File')),
+                    ('storage', _('Local Storage')),
                     ('raw', _('Direct Input'))]
     url_choice = [('url', _('URL'))]
     attributes = {'class': 'switchable', 'data-slug': 'templatesource'}
     template_source = forms.ChoiceField(label=_('Template Source'),
                                         choices=base_choices + url_choice,
                                         widget=forms.Select(attrs=attributes))
+
+    template_choices = get_templates()
+    attributes = create_upload_form_attributes(
+        'template',
+        'storage',
+        _('Template File'))
+    attributes["class"] = 'switchable'
+    attributes["data-slug"] = 'localsource'
+    template_storage_source = forms.ChoiceField(label=_('Template File'),
+                                                choices=template_choices,
+                                                widget=forms.Select(
+                                                    attrs=attributes),
+                                                required=False)
 
     attributes = create_upload_form_attributes(
         'template',
@@ -128,13 +144,29 @@ class TemplateForm(forms.SelfHandlingForm):
         self.next_view = kwargs.pop('next_view')
         super(TemplateForm, self).__init__(*args, **kwargs)
 
+        for template in get_templates():
+            attributes = create_upload_form_attributes(
+                'local',
+                '%s' % template[0],
+                _('Environment File %s' % template[1]))
+            field = forms.ChoiceField(label=_('Environment File %s' % template[1]),
+                                      choices=get_environments(template[0]),
+                                      widget=forms.Select(attrs=attributes),
+                                      required=False)
+            self.fields["environment_data____%s" % template[0]] = field
+
     def clean(self):
         cleaned = super(TemplateForm, self).clean()
-
-        files = self.request.FILES
-        self.clean_uploaded_files('template', _('template'), cleaned, files)
-        self.clean_uploaded_files('environment', _('environment'), cleaned,
-                                  files)
+        LOG.info(str(cleaned['template_storage_source']))
+        if not cleaned['template_storage_source']:
+            files = self.request.FILES
+            self.clean_uploaded_files('template', _('template'), cleaned, files)
+            self.clean_uploaded_files('environment', _('environment'), cleaned,
+                                      files)
+        else:
+            cleaned["template_data"] = get_template_data(
+                cleaned["template_storage_source"])
+            LOG.info("cleaned['template_data'] = " +str(cleaned["template_data"]))
 
         # Validate the template and get back the params.
         kwargs = {}
@@ -150,6 +182,7 @@ class TemplateForm(forms.SelfHandlingForm):
             validated = api.heat.template_validate(self.request, **kwargs)
             cleaned['template_validate'] = validated
         except Exception as e:
+            LOG.info("BOOOOOO " + six.text_type(e))
             raise forms.ValidationError(six.text_type(e))
 
         return cleaned
@@ -211,6 +244,9 @@ class TemplateForm(forms.SelfHandlingForm):
                   'environment_data': data['environment_data'],
                   'template_data': data['template_data'],
                   'template_url': data['template_url']}
+        kwargs["environment_data"] = get_environment_data(data["template_storage_source"],
+            data["environment_data____%s" % data["template_storage_source"]])  ###???
+        LOG.info("Create_kwargs: " + str(kwargs["environment_data"]))
         if data.get('stack_id'):
             kwargs['stack_id'] = data['stack_id']
         return kwargs
